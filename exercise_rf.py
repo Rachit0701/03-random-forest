@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import sklearn.ensemble as sk_ensemble
 from sklearn.datasets import make_moons
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import accuracy_score
 
 
@@ -25,7 +25,7 @@ def main(save_fig: bool, result_dir: str, num_trees: int, tree_depth: int):
 
     # load iris data
 
-    data = make_moons(n_samples=1500, noise=0.23, random_state=None)
+    data = make_moons(n_samples=1500, noise=0.23, random_state=0)
     features, labels = data[0], data[1]
 
     # split into training and  testing data
@@ -33,9 +33,33 @@ def main(save_fig: bool, result_dir: str, num_trees: int, tree_depth: int):
         features, labels, test_size=0.5, random_state=42
     )
 
+    # if no trees / depth given, search for the best ones (cross validation on train data only)
+    if num_trees is None or tree_depth is None:
+        param_grid = {
+            "n_estimators": [10, 50, 100, 200, 500],
+            "max_depth": [2, 3, 4, 5, 6, 8, 10, 12, None],
+        }
+        search = GridSearchCV(
+            sk_ensemble.RandomForestClassifier(
+                max_features=feat_train.shape[1], random_state=0
+            ),
+            param_grid,
+            cv=5,
+            n_jobs=-1,
+        )
+        print("Searching for best parameters...")
+        search.fit(feat_train, labels_train)
+        num_trees = search.best_params_["n_estimators"]
+        tree_depth = search.best_params_["max_depth"]
+        print("Best parameters:", search.best_params_)
+        print("CV accuracy: {0:.2%}".format(search.best_score_))
+
     # initialize the forest
     forest = sk_ensemble.RandomForestClassifier(
-        max_features=feat_train.shape[1], n_estimators=num_trees, max_depth=tree_depth
+        max_features=feat_train.shape[1],
+        n_estimators=num_trees,
+        max_depth=tree_depth,
+        random_state=0,
     )
 
     # train the forest
@@ -74,7 +98,7 @@ def main(save_fig: bool, result_dir: str, num_trees: int, tree_depth: int):
     xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
 
     # Get the color maps
-    cm = plt.cm.get_cmap("RdBu")
+    cm = plt.get_cmap("RdBu")
     cm_bright = ListedColormap(["#FF0000", "#0000FF"])
 
     # Plot the training points
@@ -115,13 +139,13 @@ def main(save_fig: bool, result_dir: str, num_trees: int, tree_depth: int):
     plt.text(
         x_min + 0.2,
         y_max - 0.2,
-        "Number of trees: {0:d}".format(num_trees),
+        "Number of trees: {0}".format(num_trees),
         fontdict=font,
     )
     plt.text(
         x_min + 0.2,
         y_max - 0.3,
-        "Max. tree depth: {0:d}".format(tree_depth),
+        "Max. tree depth: {0}".format(tree_depth),
         fontdict=font,
     )
 
@@ -177,15 +201,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_trees",
         type=int,
-        default=1,
-        help="Number of trees in the random forest classifier.",
+        default=None,
+        help="Number of trees in the random forest classifier (empty = search).",
     )
 
     parser.add_argument(
         "--tree_depth",
         type=int,
-        default=1,
-        help="Maximum depth of the trees in the random forest classifier.",
+        default=None,
+        help="Maximum depth of the trees in the random forest classifier (empty = search).",
     )
 
     args = parser.parse_args()
